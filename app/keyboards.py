@@ -120,24 +120,35 @@ def page_keyboard(sheet_key, page_records, page, total_count, page_size, in_sear
             name_label += " 🔴"
         rows.append([InlineKeyboardButton(name_label, callback_data="noop", style=style)])
 
+        def phone_style(highlighted):
+            if rec.hidden:
+                return "danger"
+            return "primary" if highlighted else None
+
         phone_row = []
         student_phone = format_phone(rec.student_phone)
         if student_phone:
             label = ("🔵 " if rec.highlight_student else "☎️ ") + "خودش"
             phone_row.append(
-                InlineKeyboardButton(label, copy_text=CopyTextButton(text=student_phone), style=style)
+                InlineKeyboardButton(
+                    label, copy_text=CopyTextButton(text=student_phone), style=phone_style(rec.highlight_student)
+                )
             )
         mother_phone = format_phone(rec.mother_phone)
         if mother_phone:
             label = ("🔵 " if rec.highlight_mother else "👩 ") + "مادر"
             phone_row.append(
-                InlineKeyboardButton(label, copy_text=CopyTextButton(text=mother_phone), style=style)
+                InlineKeyboardButton(
+                    label, copy_text=CopyTextButton(text=mother_phone), style=phone_style(rec.highlight_mother)
+                )
             )
         father_phone = format_phone(rec.father_phone)
         if father_phone:
             label = ("🔵 " if rec.highlight_father else "👨 ") + "پدر"
             phone_row.append(
-                InlineKeyboardButton(label, copy_text=CopyTextButton(text=father_phone), style=style)
+                InlineKeyboardButton(
+                    label, copy_text=CopyTextButton(text=father_phone), style=phone_style(rec.highlight_father)
+                )
             )
         if phone_row:
             rows.append(phone_row)
