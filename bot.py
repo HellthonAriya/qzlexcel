@@ -34,6 +34,7 @@ from app.handlers import (
     cmd_export,
     cmd_reload,
     cmd_reset_status,
+    cmd_settings,
     cmd_start,
     cmd_stats,
     on_callback,
@@ -71,6 +72,7 @@ def main():
     application.add_handler(CommandHandler("reload", cmd_reload))
     application.add_handler(CommandHandler("reset_status", cmd_reset_status))
     application.add_handler(CommandHandler("stats", cmd_stats))
+    application.add_handler(CommandHandler("settings", cmd_settings))
     application.add_handler(CallbackQueryHandler(on_callback))
     application.add_handler(MessageHandler(filters.Document.ALL, on_document))
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, on_text))

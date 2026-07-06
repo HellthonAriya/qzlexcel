@@ -133,6 +133,7 @@ class Record:
     sheet_key: str
     row: int
     redif: object
+    operator: object
     full_name: object
     grade: object
     major: object
@@ -186,10 +187,13 @@ def load_workbook_records(path):
             row_dim = ws.row_dimensions.get(r)
             hidden = bool(row_dim.hidden) if row_dim is not None else False
 
+            operator = _normalize_header(val("operator")) or None
+
             records[r] = Record(
                 sheet_key=key,
                 row=r,
                 redif=redif,
+                operator=operator,
                 full_name=full_name,
                 grade=val("grade"),
                 major=val("major"),

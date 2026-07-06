@@ -19,6 +19,18 @@ def root_menu_keyboard(sheet_items):
     rows.append([InlineKeyboardButton("🔎 جستجو در همه‌ی شیت‌ها", callback_data="search:global:start")])
     rows.append([InlineKeyboardButton("📊 آمار کلی", callback_data="stats")])
     rows.append([InlineKeyboardButton("📤 خروجی کامل اکسل", callback_data="export")])
+    rows.append([InlineKeyboardButton("⚙️ تنظیمات", callback_data="settings:open")])
+    return InlineKeyboardMarkup(rows)
+
+
+def settings_keyboard(operators, selected):
+    rows = []
+    for idx, name in enumerate(operators):
+        mark = "✅ " if name == selected else ""
+        rows.append([InlineKeyboardButton(f"{mark}{name}", callback_data=f"settings:op:{idx}")])
+    if selected:
+        rows.append([InlineKeyboardButton("🚫 حذف انتخاب", callback_data="settings:clear")])
+    rows.append([InlineKeyboardButton("🏠 انتخاب رشته", callback_data="menu:root")])
     return InlineKeyboardMarkup(rows)
 
 
@@ -120,7 +132,15 @@ def _short_name(name, limit=28):
     return name if len(name) <= limit else name[: limit - 1] + "…"
 
 
-def page_keyboard(page_records, page, total_count, page_size, in_search, mode="sheet"):
+def _record_style(rec, selected_operator):
+    if rec.hidden:
+        return "danger"
+    if selected_operator and rec.operator == selected_operator:
+        return "primary"
+    return None
+
+
+def page_keyboard(page_records, page, total_count, page_size, in_search, mode="sheet", selected_operator=None):
     rows = []
     total_pages = max(1, math.ceil(total_count / page_size))
 
@@ -128,15 +148,17 @@ def page_keyboard(page_records, page, total_count, page_size, in_search, mode="s
         if idx > 0:
             rows.append([InlineKeyboardButton("➖➖➖➖➖➖➖➖➖➖➖➖➖➖➖", callback_data="noop")])
 
-        style = "danger" if rec.hidden else None
+        style = _record_style(rec, selected_operator)
         name_label = f"👤 {_redif_prefix(rec.redif)}{_short_name(rec.full_name)}"
         if rec.hidden:
             name_label += " 🔴"
+        elif style == "primary":
+            name_label += " 🔵"
         rows.append([InlineKeyboardButton(name_label, callback_data="noop", style=style)])
 
         def phone_style(highlighted):
-            if rec.hidden:
-                return "danger"
+            if style is not None:
+                return style
             return "primary" if highlighted else None
 
         phone_row = []

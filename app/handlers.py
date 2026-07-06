@@ -14,6 +14,7 @@ from app.keyboards import (
     page_text,
     root_menu_keyboard,
     search_prompt_keyboard,
+    settings_keyboard,
     stats_back_keyboard,
 )
 
@@ -40,11 +41,18 @@ def _check_access(user_id: int) -> bool:
     return config.is_allowed(user_id)
 
 
+def _ensure_operator_loaded(context: ContextTypes.DEFAULT_TYPE, user_id: int):
+    if "selected_operator" not in context.user_data:
+        state_store = context.bot_data.get("state_store")
+        context.user_data["selected_operator"] = state_store.get_selected_operator(user_id) if state_store else None
+
+
 def _render(context: ContextTypes.DEFAULT_TYPE):
     store = _store(context)
     view = context.user_data
     page = view.get("page", 0)
     query = view.get("query")
+    selected_operator = view.get("selected_operator")
 
     if view.get("global"):
         all_records = store.search_all(query)
@@ -54,7 +62,9 @@ def _render(context: ContextTypes.DEFAULT_TYPE):
         text = page_text(
             page_records, total, page, config.PAGE_SIZE, query, sheet_labels=dict(store.sheet_items())
         )
-        keyboard = page_keyboard(page_records, page, total, config.PAGE_SIZE, True, mode="global")
+        keyboard = page_keyboard(
+            page_records, page, total, config.PAGE_SIZE, True, mode="global", selected_operator=selected_operator
+        )
         return text, keyboard
 
     sheet_key = view.get("sheet")
@@ -66,7 +76,9 @@ def _render(context: ContextTypes.DEFAULT_TYPE):
     sheet_name = store.sheet_label(sheet_key)
 
     text = page_text(page_records, total, page, config.PAGE_SIZE, query, sheet_stats, sheet_name=sheet_name)
-    keyboard = page_keyboard(page_records, page, total, config.PAGE_SIZE, bool(query))
+    keyboard = page_keyboard(
+        page_records, page, total, config.PAGE_SIZE, bool(query), selected_operator=selected_operator
+    )
     return text, keyboard
 
 
@@ -74,7 +86,9 @@ async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not _check_access(update.effective_user.id):
         await _deny(update)
         return
+    user_id = update.effective_user.id
     context.user_data.clear()
+    _ensure_operator_loaded(context, user_id)
     store = _store(context)
     if store is None:
         await update.message.reply_text(NO_FILE_MESSAGE)
@@ -83,6 +97,24 @@ async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "به ربات مدیریت پیگیری دانش‌آموزان خوش آمدید.\nرشته موردنظر را انتخاب کنید:",
         reply_markup=root_menu_keyboard(store.sheet_items()),
     )
+
+
+async def cmd_settings(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not _check_access(update.effective_user.id):
+        await _deny(update)
+        return
+    _ensure_operator_loaded(context, update.effective_user.id)
+    store = _store(context)
+    if store is None:
+        await update.message.reply_text(NO_FILE_MESSAGE)
+        return
+    operators = store.list_operators()
+    context.user_data["operator_choices"] = operators
+    selected = context.user_data.get("selected_operator")
+    text = "⚙️ تنظیمات\nنام ادمین (اپراتور) خودتان را انتخاب کنید تا موارد مربوط به شما در لیست‌ها با رنگ آبی مشخص شود:"
+    if selected:
+        text = f"⚙️ تنظیمات\nادمین انتخاب‌شده: «{selected}»\n\n" + text
+    await update.message.reply_text(text, reply_markup=settings_keyboard(operators, selected))
 
 
 async def cmd_export(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -224,6 +256,7 @@ async def on_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not _check_access(update.effective_user.id):
         await _deny(update)
         return
+    _ensure_operator_loaded(context, update.effective_user.id)
 
     data = query.data
 
@@ -268,6 +301,41 @@ async def on_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     if _store(context) is None:
         await query.answer(NO_FILE_MESSAGE, show_alert=True)
+        return
+
+    if data == "settings:open":
+        store = _store(context)
+        operators = store.list_operators()
+        context.user_data["operator_choices"] = operators
+        selected = context.user_data.get("selected_operator")
+        text = "⚙️ تنظیمات\nنام ادمین (اپراتور) خودتان را انتخاب کنید تا موارد مربوط به شما در لیست‌ها با رنگ آبی مشخص شود:"
+        if selected:
+            text = f"⚙️ تنظیمات\nادمین انتخاب‌شده: «{selected}»\n\n" + text
+        await query.answer()
+        await query.edit_message_text(text, reply_markup=settings_keyboard(operators, selected))
+        return
+
+    if data.startswith("settings:op:"):
+        idx = int(data.split(":")[2])
+        choices = context.user_data.get("operator_choices") or []
+        if idx < 0 or idx >= len(choices):
+            await query.answer("این گزینه دیگر معتبر نیست.", show_alert=True)
+            return
+        operator = choices[idx]
+        context.user_data["selected_operator"] = operator
+        context.bot_data["state_store"].set_selected_operator(update.effective_user.id, operator)
+        await query.answer(f"ادمین «{operator}» انتخاب شد.")
+        text = f"⚙️ تنظیمات\nادمین انتخاب‌شده: «{operator}»\nموارد مربوط به شما در لیست‌ها با رنگ آبی مشخص می‌شوند."
+        await query.edit_message_text(text, reply_markup=settings_keyboard(choices, operator))
+        return
+
+    if data == "settings:clear":
+        context.user_data["selected_operator"] = None
+        context.bot_data["state_store"].set_selected_operator(update.effective_user.id, None)
+        choices = context.user_data.get("operator_choices") or []
+        await query.answer("انتخاب پاک شد.")
+        text = "⚙️ تنظیمات\nنام ادمین (اپراتور) خودتان را انتخاب کنید تا موارد مربوط به شما در لیست‌ها با رنگ آبی مشخص شود:"
+        await query.edit_message_text(text, reply_markup=settings_keyboard(choices, None))
         return
 
     if data == "stats":
@@ -395,6 +463,7 @@ async def on_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not _check_access(update.effective_user.id):
         await _deny(update)
         return
+    _ensure_operator_loaded(context, update.effective_user.id)
 
     if not context.user_data.get("awaiting_search"):
         return

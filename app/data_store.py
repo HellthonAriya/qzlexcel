@@ -97,6 +97,17 @@ class DataStore:
             results.extend(rec for rec in self.get_records(key) if self._matches(rec, query, qdigits))
         return results
 
+    def list_operators(self):
+        seen = set()
+        result = []
+        for key in self.sheet_labels:
+            for rec in self.get_records(key):
+                if rec.operator and rec.operator not in seen:
+                    seen.add(rec.operator)
+                    result.append(rec.operator)
+        result.sort()
+        return result
+
     def stats(self, sheet_key):
         return compute_stats(self.get_records(sheet_key))
 

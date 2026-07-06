@@ -22,6 +22,14 @@ class StateStore:
                 )
                 """
             )
+            conn.execute(
+                """
+                CREATE TABLE IF NOT EXISTS user_prefs (
+                    user_id INTEGER PRIMARY KEY,
+                    selected_operator TEXT
+                )
+                """
+            )
             conn.commit()
 
     def load_all(self):
@@ -48,4 +56,22 @@ class StateStore:
     def clear(self):
         with closing(sqlite3.connect(self.path)) as conn:
             conn.execute("DELETE FROM status")
+            conn.commit()
+
+    def get_selected_operator(self, user_id):
+        with closing(sqlite3.connect(self.path)) as conn:
+            row = conn.execute(
+                "SELECT selected_operator FROM user_prefs WHERE user_id = ?", (user_id,)
+            ).fetchone()
+        return row[0] if row else None
+
+    def set_selected_operator(self, user_id, operator):
+        with closing(sqlite3.connect(self.path)) as conn:
+            conn.execute(
+                """
+                INSERT INTO user_prefs (user_id, selected_operator) VALUES (?, ?)
+                ON CONFLICT(user_id) DO UPDATE SET selected_operator = excluded.selected_operator
+                """,
+                (user_id, operator),
+            )
             conn.commit()
