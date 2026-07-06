@@ -26,6 +26,10 @@ def _display_status(text_map, status):
     return f"{STATUS_ICON[status]} {label}"
 
 
+def _redif_prefix(redif):
+    return f"ردیف {redif} — " if redif is not None else ""
+
+
 def _stats_line(stats):
     p = stats["phone"]
     a = stats["attendance"]
@@ -36,7 +40,7 @@ def _stats_line(stats):
 
 
 def full_stats_text(stats_by_sheet, sheet_items):
-    lines = ["📊 آمار کلی", "━━━━━━━━━━━━━━"]
+    lines = ["📊 آمار کلی", "━━━━━━━━━━━━━━━━━━━━━━"]
     grand_phone = {s: 0 for s in Status}
     grand_attendance = {s: 0 for s in Status}
     grand_total = 0
@@ -53,7 +57,7 @@ def full_stats_text(stats_by_sheet, sheet_items):
             grand_attendance[s] += stats["attendance"][s]
         grand_total += stats["total"]
 
-    lines.append("━━━━━━━━━━━━━━")
+    lines.append("━━━━━━━━━━━━━━━━━━━━━━")
     lines.append(f"جمع کل ({grand_total} نفر)")
     lines.append(_stats_line({"phone": grand_phone, "attendance": grand_attendance, "total": grand_total}))
     return "\n".join(lines)
@@ -72,12 +76,15 @@ def page_text(sheet_key, sheet_name, page_records, total_count, page, page_size,
 
     first_redif = page_records[0].redif
     last_redif = page_records[-1].redif
-    lines.append(f"📄 نمایش ردیف {first_redif} تا {last_redif} (از {total_count} مورد)")
-    lines.append("━━━━━━━━━━━━━━")
+    if first_redif is not None and last_redif is not None:
+        lines.append(f"📄 نمایش ردیف {first_redif} تا {last_redif} (از {total_count} مورد)")
+    else:
+        lines.append(f"📄 نمایش {len(page_records)} مورد (از {total_count} مورد)")
+    lines.append("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
 
     start_index = page * page_size
     for i, rec in enumerate(page_records, start=start_index + 1):
-        lines.append(f"{i}) ردیف {rec.redif} — {rec.full_name or 'نامشخص'}")
+        lines.append(f"{i}) {_redif_prefix(rec.redif)}{rec.full_name or 'نامشخص'}")
         info_parts = []
         if rec.grade:
             info_parts.append(f"مقطع: {rec.grade}")
@@ -88,7 +95,7 @@ def page_text(sheet_key, sheet_name, page_records, total_count, page, page_size,
         phone_disp = _display_status(PHONE_STATUS_TEXT, rec.phone_status)
         attend_disp = _display_status(ATTEND_STATUS_TEXT, rec.attendance_status)
         lines.append(f"📞 پاسخگویی: {phone_disp}  |  👥 حضور: {attend_disp}")
-        lines.append("━━━━━━━━━━━━━━")
+        lines.append("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
 
     return "\n".join(lines)
 
@@ -104,12 +111,12 @@ def page_keyboard(sheet_key, page_records, page, total_count, page_size, in_sear
 
     for idx, rec in enumerate(page_records):
         if idx > 0:
-            rows.append([InlineKeyboardButton("➖➖➖➖➖", callback_data="noop")])
+            rows.append([InlineKeyboardButton("➖➖➖➖➖➖➖➖➖➖➖➖➖➖➖", callback_data="noop")])
 
         rows.append(
             [
                 InlineKeyboardButton(
-                    f"👤 ردیف {rec.redif} — {_short_name(rec.full_name)}",
+                    f"👤 {_redif_prefix(rec.redif)}{_short_name(rec.full_name)}",
                     callback_data="noop",
                 )
             ]
