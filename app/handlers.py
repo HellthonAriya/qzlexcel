@@ -9,10 +9,12 @@ from app import config, excel_data
 from app.data_store import DataStore
 from app.keyboards import (
     confirm_replace_keyboard,
+    full_stats_text,
     page_keyboard,
     page_text,
     root_menu_keyboard,
     search_prompt_keyboard,
+    stats_back_keyboard,
 )
 
 logger = logging.getLogger(__name__)
@@ -49,8 +51,9 @@ def _render(context: ContextTypes.DEFAULT_TYPE):
     total = len(all_records)
     start = page * config.PAGE_SIZE
     page_records = all_records[start : start + config.PAGE_SIZE]
+    sheet_stats = store.stats(sheet_key)
 
-    text = page_text(sheet_key, page_records, total, page, config.PAGE_SIZE, query)
+    text = page_text(sheet_key, page_records, total, page, config.PAGE_SIZE, query, sheet_stats)
     keyboard = page_keyboard(sheet_key, page_records, page, total, config.PAGE_SIZE, bool(query))
     return text, keyboard
 
@@ -106,6 +109,19 @@ async def cmd_reset_status(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if store is not None:
         store.reload()
     await update.message.reply_text("✅ همه وضعیت‌های ثبت‌شده پاک شد.")
+
+
+async def cmd_stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not _check_access(update.effective_user.id):
+        await _deny(update)
+        return
+    store = _store(context)
+    if store is None:
+        await update.message.reply_text(NO_FILE_MESSAGE)
+        return
+    text = full_stats_text(store.stats_all())
+    keyboard = stats_back_keyboard(bool(context.user_data.get("sheet")))
+    await update.message.reply_text(text, reply_markup=keyboard)
 
 
 async def _send_export(chat_id, context: ContextTypes.DEFAULT_TYPE):
@@ -227,6 +243,22 @@ async def on_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     if _store(context) is None:
         await query.answer(NO_FILE_MESSAGE, show_alert=True)
+        return
+
+    if data == "stats":
+        await query.answer()
+        text = full_stats_text(_store(context).stats_all())
+        keyboard = stats_back_keyboard(bool(context.user_data.get("sheet")))
+        await query.edit_message_text(text, reply_markup=keyboard)
+        return
+
+    if data == "stats:back":
+        await query.answer()
+        if context.user_data.get("sheet"):
+            text, keyboard = _render(context)
+        else:
+            text, keyboard = "رشته موردنظر را انتخاب کنید:", root_menu_keyboard()
+        await query.edit_message_text(text, reply_markup=keyboard)
         return
 
     if data.startswith("menu:"):

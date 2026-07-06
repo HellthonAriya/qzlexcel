@@ -6,6 +6,7 @@ import openpyxl
 
 SHEET_KEYS = {"انسانی": "h", "تجربی": "e", "ریاضی": "m"}
 SHEET_LABELS = {v: k for k, v in SHEET_KEYS.items()}
+SHEET_EMOJI = {"h": "📗", "e": "📘", "m": "📙"}
 
 
 class Status(Enum):

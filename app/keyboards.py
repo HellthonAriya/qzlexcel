@@ -5,8 +5,10 @@ from telegram import CopyTextButton, InlineKeyboardButton, InlineKeyboardMarkup
 from app.excel_data import (
     ATTEND_STATUS_TEXT,
     PHONE_STATUS_TEXT,
+    SHEET_EMOJI,
     SHEET_LABELS,
     STATUS_ICON,
+    Status,
     format_phone,
 )
 
@@ -16,6 +18,7 @@ def root_menu_keyboard():
         [InlineKeyboardButton("📗 انسانی", callback_data="menu:h")],
         [InlineKeyboardButton("📘 تجربی", callback_data="menu:e")],
         [InlineKeyboardButton("📙 ریاضی", callback_data="menu:m")],
+        [InlineKeyboardButton("📊 آمار کلی", callback_data="stats")],
         [InlineKeyboardButton("📤 خروجی کامل اکسل", callback_data="export")],
     ]
     return InlineKeyboardMarkup(rows)
@@ -26,10 +29,45 @@ def _display_status(text_map, status):
     return f"{STATUS_ICON[status]} {label}"
 
 
-def page_text(sheet_key, page_records, total_count, page, page_size, query=None):
+def _stats_line(stats):
+    p = stats["phone"]
+    a = stats["attendance"]
+    return (
+        f"📞 پاسخگویی: ✅ {p[Status.CHECK]}  ❌ {p[Status.CROSS]}  🔶 {p[Status.OTHER]}  ⬜ {p[Status.EMPTY]}\n"
+        f"👥 حضور: ✅ {a[Status.CHECK]}  ❌ {a[Status.CROSS]}  🔶 {a[Status.OTHER]}  ⬜ {a[Status.EMPTY]}"
+    )
+
+
+def full_stats_text(stats_by_sheet):
+    lines = ["📊 آمار کلی", "━━━━━━━━━━━━━━"]
+    grand_phone = {s: 0 for s in Status}
+    grand_attendance = {s: 0 for s in Status}
+    grand_total = 0
+
+    for key in SHEET_LABELS:
+        stats = stats_by_sheet.get(key)
+        if not stats:
+            continue
+        lines.append(f"{SHEET_EMOJI.get(key, '')} {SHEET_LABELS[key]} ({stats['total']} نفر)")
+        lines.append(_stats_line(stats))
+        lines.append("")
+        for s in Status:
+            grand_phone[s] += stats["phone"][s]
+            grand_attendance[s] += stats["attendance"][s]
+        grand_total += stats["total"]
+
+    lines.append("━━━━━━━━━━━━━━")
+    lines.append(f"جمع کل ({grand_total} نفر)")
+    lines.append(_stats_line({"phone": grand_phone, "attendance": grand_attendance, "total": grand_total}))
+    return "\n".join(lines)
+
+
+def page_text(sheet_key, page_records, total_count, page, page_size, query=None, sheet_stats=None):
     lines = [f"📚 رشته: {SHEET_LABELS[sheet_key]}"]
     if query:
         lines.append(f"🔎 جستجو: «{query}»")
+    if sheet_stats:
+        lines.append(_stats_line(sheet_stats))
 
     if not page_records:
         lines.append("📄 نتیجه‌ای یافت نشد.")
@@ -123,10 +161,23 @@ def page_keyboard(sheet_key, page_records, page, total_count, page_size, in_sear
     bottom_row = [InlineKeyboardButton("🔎 جستجو", callback_data="search:start")]
     if in_search:
         bottom_row.append(InlineKeyboardButton("✖️ حذف فیلتر", callback_data="search:clear"))
-    bottom_row.append(InlineKeyboardButton("📤 خروجی اکسل", callback_data="export"))
     rows.append(bottom_row)
+    rows.append(
+        [
+            InlineKeyboardButton("📊 آمار کلی", callback_data="stats"),
+            InlineKeyboardButton("📤 خروجی اکسل", callback_data="export"),
+        ]
+    )
     rows.append([InlineKeyboardButton("🏠 انتخاب رشته", callback_data="menu:root")])
 
+    return InlineKeyboardMarkup(rows)
+
+
+def stats_back_keyboard(has_sheet):
+    rows = []
+    if has_sheet:
+        rows.append([InlineKeyboardButton("🔙 بازگشت به لیست", callback_data="stats:back")])
+    rows.append([InlineKeyboardButton("🏠 انتخاب رشته", callback_data="menu:root")])
     return InlineKeyboardMarkup(rows)
 
 

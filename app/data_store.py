@@ -6,6 +6,15 @@ from app import excel_data
 from app.excel_data import Status
 
 
+def compute_stats(records):
+    phone = {s: 0 for s in Status}
+    attendance = {s: 0 for s in Status}
+    for rec in records:
+        phone[rec.phone_status] += 1
+        attendance[rec.attendance_status] += 1
+    return {"phone": phone, "attendance": attendance, "total": len(records)}
+
+
 class DataStore:
     def __init__(self, excel_path, state_store, tmp_dir):
         self.excel_path = excel_path
@@ -68,6 +77,12 @@ class DataStore:
                 if any(phone is not None and qdigits in re.sub(r"\D", "", str(phone)) for phone in phones):
                     results.append(rec)
         return results
+
+    def stats(self, sheet_key):
+        return compute_stats(self.get_records(sheet_key))
+
+    def stats_all(self):
+        return {key: compute_stats(records.values()) for key, records in self.records_by_sheet.items()}
 
     def export(self):
         out_path = os.path.join(self.tmp_dir, f"export_{int(time.time())}.xlsx")
