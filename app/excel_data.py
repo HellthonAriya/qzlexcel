@@ -70,10 +70,10 @@ def format_phone(value):
         return None
     if isinstance(value, float):
         value = int(value)
-    s = str(value).strip()
-    if s.isdigit() and len(s) == 10 and not s.startswith("0"):
-        s = "0" + s
-    return s
+    digits = re.sub(r"\D", "", str(value).strip())
+    if not digits:
+        return None
+    return digits[-10:]
 
 
 def _normalize_header(text) -> str:
