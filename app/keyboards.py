@@ -58,6 +58,11 @@ def page_text(sheet_key, page_records, total_count, page, page_size, query=None)
     return "\n".join(lines)
 
 
+def _short_name(name, limit=28):
+    name = str(name or "نامشخص")
+    return name if len(name) <= limit else name[: limit - 1] + "…"
+
+
 def page_keyboard(sheet_key, page_records, page, total_count, page_size, in_search):
     rows = []
     total_pages = max(1, math.ceil(total_count / page_size))
@@ -65,6 +70,15 @@ def page_keyboard(sheet_key, page_records, page, total_count, page_size, in_sear
     for idx, rec in enumerate(page_records):
         if idx > 0:
             rows.append([InlineKeyboardButton("➖➖➖➖➖", callback_data="noop")])
+
+        rows.append(
+            [
+                InlineKeyboardButton(
+                    f"👤 ردیف {rec.redif} — {_short_name(rec.full_name)}",
+                    callback_data="noop",
+                )
+            ]
+        )
 
         phone_row = []
         if rec.student_phone:
