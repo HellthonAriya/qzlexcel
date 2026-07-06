@@ -23,23 +23,40 @@ def root_menu_keyboard(sheet_items):
     return InlineKeyboardMarkup(rows)
 
 
-def settings_keyboard(operators, selected, operator_column_override=None):
+COLUMN_FIELD_LABELS = {
+    "operator": "ادمین",
+    "phone_status": "وضعیت پاسخگویی",
+    "attendance_status": "وضعیت حضور",
+}
+
+
+def settings_keyboard(operators, selected, col_overrides=None):
+    col_overrides = col_overrides or {}
     rows = []
     for idx, name in enumerate(operators):
         mark = "✅ " if name == selected else ""
         rows.append([InlineKeyboardButton(f"{mark}{name}", callback_data=f"settings:op:{idx}")])
     if selected:
         rows.append([InlineKeyboardButton("🚫 حذف انتخاب", callback_data="settings:clear")])
-    col_label = f"ستون {operator_column_override}" if operator_column_override else "تشخیص خودکار"
-    rows.append(
-        [InlineKeyboardButton(f"🔧 ستون ادمین: {col_label} (تغییر)", callback_data="settings:opcol:start")]
-    )
+    for field, label in COLUMN_FIELD_LABELS.items():
+        override = col_overrides.get(field)
+        col_label = f"ستون {override}" if override else "تشخیص خودکار"
+        rows.append(
+            [
+                InlineKeyboardButton(
+                    f"🔧 ستون {label}: {col_label} (تغییر)",
+                    callback_data=f"settings:col:{field}:start",
+                )
+            ]
+        )
     rows.append([InlineKeyboardButton("🏠 انتخاب رشته", callback_data="menu:root")])
     return InlineKeyboardMarkup(rows)
 
 
-def opcol_prompt_keyboard():
-    return InlineKeyboardMarkup([[InlineKeyboardButton("✖️ انصراف", callback_data="settings:opcol:cancel")]])
+def col_prompt_keyboard(field):
+    return InlineKeyboardMarkup(
+        [[InlineKeyboardButton("✖️ انصراف", callback_data=f"settings:col:{field}:cancel")]]
+    )
 
 
 def _display_status(text_map, status):

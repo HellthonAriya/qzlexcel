@@ -9,9 +9,10 @@ from telegram.ext import ContextTypes
 from app import config, excel_data
 from app.data_store import DataStore
 from app.keyboards import (
+    COLUMN_FIELD_LABELS,
+    col_prompt_keyboard,
     confirm_replace_keyboard,
     full_stats_text,
-    opcol_prompt_keyboard,
     page_keyboard,
     page_text,
     root_menu_keyboard,
@@ -53,11 +54,11 @@ def _settings_view(store, context: ContextTypes.DEFAULT_TYPE):
     operators = store.list_operators()
     context.user_data["operator_choices"] = operators
     selected = context.user_data.get("selected_operator")
-    override = store.get_operator_column_override()
+    col_overrides = store.get_column_overrides()
     text = "⚙️ تنظیمات\nنام ادمین (اپراتور) خودتان را انتخاب کنید تا موارد مربوط به شما در لیست‌ها با رنگ آبی مشخص شود:"
     if selected:
         text = f"⚙️ تنظیمات\nادمین انتخاب‌شده: «{selected}»\n\n" + text
-    keyboard = settings_keyboard(operators, selected, override)
+    keyboard = settings_keyboard(operators, selected, col_overrides)
     return text, keyboard
 
 
@@ -230,8 +231,12 @@ async def on_document(update: Update, context: ContextTypes.DEFAULT_TYPE):
     tg_file = await context.bot.get_file(document.file_id)
     await tg_file.download_to_drive(tmp_path)
 
+    state_store = context.bot_data["state_store"]
+    col_overrides = {
+        field: state_store.get_config(f"{field}_column_override") for field in excel_data.OVERRIDABLE_FIELDS
+    }
     try:
-        records, sheet_labels = excel_data.load_workbook_records(tmp_path)
+        records, sheet_labels = excel_data.load_workbook_records(tmp_path, col_overrides=col_overrides)
     except Exception:
         os.remove(tmp_path)
         await update.message.reply_text("❌ این فایل اکسل قابل خواندن نیست یا فرمت آن معتبر نیست.")
@@ -341,22 +346,24 @@ async def on_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await query.edit_message_text(text, reply_markup=keyboard)
         return
 
-    if data == "settings:opcol:start":
-        context.user_data["awaiting_opcol"] = True
-        await query.answer()
-        await query.edit_message_text(
-            "🔧 حرف ستون ادمین را بفرستید (مثلاً A یا B).\n"
-            "برای بازگشت به تشخیص خودکار (بر اساس نام هدر «اپراتور»)، عبارت «خودکار» را بفرستید.",
-            reply_markup=opcol_prompt_keyboard(),
-        )
-        return
-
-    if data == "settings:opcol:cancel":
-        context.user_data["awaiting_opcol"] = False
-        await query.answer()
-        text, keyboard = _settings_view(_store(context), context)
-        await query.edit_message_text(text, reply_markup=keyboard)
-        return
+    if data.startswith("settings:col:"):
+        _, _, field, action = data.split(":")
+        if action == "start":
+            context.user_data["awaiting_col_field"] = field
+            await query.answer()
+            label = COLUMN_FIELD_LABELS.get(field, field)
+            await query.edit_message_text(
+                f"🔧 حرف ستون «{label}» را بفرستید (مثلاً A یا B).\n"
+                "برای بازگشت به تشخیص خودکار بر اساس نام هدر، عبارت «خودکار» را بفرستید.",
+                reply_markup=col_prompt_keyboard(field),
+            )
+            return
+        if action == "cancel":
+            context.user_data["awaiting_col_field"] = None
+            await query.answer()
+            text, keyboard = _settings_view(_store(context), context)
+            await query.edit_message_text(text, reply_markup=keyboard)
+            return
 
     if data == "stats":
         store = _store(context)
@@ -485,20 +492,22 @@ async def on_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
     _ensure_operator_loaded(context, update.effective_user.id)
 
-    if context.user_data.get("awaiting_opcol"):
-        context.user_data["awaiting_opcol"] = False
+    awaiting_field = context.user_data.get("awaiting_col_field")
+    if awaiting_field:
+        context.user_data["awaiting_col_field"] = None
         store = _store(context)
         if store is None:
             await update.message.reply_text(NO_FILE_MESSAGE)
             return
+        label = COLUMN_FIELD_LABELS.get(awaiting_field, awaiting_field)
         text_in = update.message.text.strip()
         if text_in in ("خودکار", "auto", "0"):
-            store.set_operator_column_override(None)
-            await update.message.reply_text("↩️ به تشخیص خودکار ستون ادمین بازگشتیم و فایل مجدداً خوانده شد.")
+            store.set_column_override(awaiting_field, None)
+            await update.message.reply_text(f"↩️ ستون «{label}» به تشخیص خودکار بازگشت و فایل مجدداً خوانده شد.")
         elif re.fullmatch(r"[A-Za-z]{1,2}", text_in):
-            store.set_operator_column_override(text_in)
+            store.set_column_override(awaiting_field, text_in)
             await update.message.reply_text(
-                f"✅ ستون {text_in.upper()} به‌عنوان ستون ادمین تنظیم شد و فایل مجدداً خوانده شد."
+                f"✅ ستون {text_in.upper()} برای «{label}» تنظیم شد و فایل مجدداً خوانده شد."
             )
         else:
             await update.message.reply_text(

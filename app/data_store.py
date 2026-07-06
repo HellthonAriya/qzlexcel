@@ -26,9 +26,8 @@ class DataStore:
         self.reload()
 
     def reload(self):
-        operator_col = self.state_store.get_config("operator_column_override")
         records_by_sheet, sheet_labels = excel_data.load_workbook_records(
-            self.excel_path, operator_col_letter=operator_col
+            self.excel_path, col_overrides=self.get_column_overrides()
         )
         overrides = self.state_store.load_all()
         for key, records in records_by_sheet.items():
@@ -100,11 +99,14 @@ class DataStore:
             results.extend(rec for rec in self.get_records(key) if self._matches(rec, query, qdigits))
         return results
 
-    def get_operator_column_override(self):
-        return self.state_store.get_config("operator_column_override")
+    def get_column_overrides(self):
+        return {
+            field: self.state_store.get_config(f"{field}_column_override")
+            for field in excel_data.OVERRIDABLE_FIELDS
+        }
 
-    def set_operator_column_override(self, letter):
-        self.state_store.set_config("operator_column_override", letter.upper() if letter else None)
+    def set_column_override(self, field, letter):
+        self.state_store.set_config(f"{field}_column_override", letter.upper() if letter else None)
         self.reload()
 
     def list_operators(self):
@@ -127,5 +129,9 @@ class DataStore:
     def export(self):
         out_path = os.path.join(self.tmp_dir, f"export_{int(time.time())}.xlsx")
         return excel_data.export_workbook(
-            self.excel_path, self.records_by_sheet, self.sheet_labels, out_path
+            self.excel_path,
+            self.records_by_sheet,
+            self.sheet_labels,
+            out_path,
+            col_overrides=self.get_column_overrides(),
         )
