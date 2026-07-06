@@ -26,8 +26,16 @@
 
 ## نصب (تک‌خطی)
 
+این دستور فقط فایل‌های پروژه را دریافت می‌کند؛ اجراکردن ربات و ساخت محیط اجرایی (venv و…) با خودتان است:
+
 ```bash
-git clone https://github.com/HellthonAriya/qzlexcel.git && cd qzlexcel && python3 -m venv venv && source venv/bin/activate && pip install -r requirements.txt && cp .env.example .env
+git clone https://github.com/HellthonAriya/qzlexcel.git && cd qzlexcel && cp .env.example .env
+```
+
+برای نصب پیش‌نیازهای پایتون هم کافی‌ست این را (در محیط دلخواه خودتان) اجرا کنید:
+
+```bash
+pip install -r requirements.txt
 ```
 
 ## تنظیمات
@@ -46,14 +54,16 @@ git clone https://github.com/HellthonAriya/qzlexcel.git && cd qzlexcel && python
 
 ## اجرا
 
+اجرای ربات با خودتان است، مثلاً:
+
 ```bash
-source venv/bin/activate && python bot.py
+python bot.py
 ```
 
 ## بروزرسانی (تک‌خطی)
 
 ```bash
-cd qzlexcel && git pull && source venv/bin/activate && pip install -r requirements.txt --upgrade
+cd qzlexcel && git pull
 ```
 
 ## دستورات ربات
