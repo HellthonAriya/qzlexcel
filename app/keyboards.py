@@ -16,6 +16,7 @@ def root_menu_keyboard(sheet_items):
     rows = []
     for idx, (key, name) in enumerate(sheet_items):
         rows.append([InlineKeyboardButton(f"{sheet_emoji(idx)} {name}", callback_data=f"menu:{key}")])
+    rows.append([InlineKeyboardButton("🔎 جستجو در همه‌ی شیت‌ها", callback_data="search:global:start")])
     rows.append([InlineKeyboardButton("📊 آمار کلی", callback_data="stats")])
     rows.append([InlineKeyboardButton("📤 خروجی کامل اکسل", callback_data="export")])
     return InlineKeyboardMarkup(rows)
@@ -63,8 +64,20 @@ def full_stats_text(stats_by_sheet, sheet_items):
     return "\n".join(lines)
 
 
-def page_text(sheet_key, sheet_name, page_records, total_count, page, page_size, query=None, sheet_stats=None):
-    lines = [f"📚 رشته: {sheet_name}"]
+def page_text(
+    page_records,
+    total_count,
+    page,
+    page_size,
+    query=None,
+    sheet_stats=None,
+    sheet_name=None,
+    sheet_labels=None,
+):
+    """Renders a page of records. Pass sheet_name for a normal single-sheet
+    view, or leave it None (with sheet_labels) for a cross-sheet search
+    view, where each record shows which sheet it belongs to."""
+    lines = [f"📚 رشته: {sheet_name}"] if sheet_name is not None else ["🔎 جستجو در همه‌ی شیت‌ها"]
     if query:
         lines.append(f"🔎 جستجو: «{query}»")
     if sheet_stats:
@@ -76,7 +89,7 @@ def page_text(sheet_key, sheet_name, page_records, total_count, page, page_size,
 
     first_redif = page_records[0].redif
     last_redif = page_records[-1].redif
-    if first_redif is not None and last_redif is not None:
+    if sheet_name is not None and first_redif is not None and last_redif is not None:
         lines.append(f"📄 نمایش ردیف {first_redif} تا {last_redif} (از {total_count} مورد)")
     else:
         lines.append(f"📄 نمایش {len(page_records)} مورد (از {total_count} مورد)")
@@ -85,7 +98,8 @@ def page_text(sheet_key, sheet_name, page_records, total_count, page, page_size,
     start_index = page * page_size
     for i, rec in enumerate(page_records, start=start_index + 1):
         hidden_note = " 🔴 (مخفی)" if rec.hidden else ""
-        lines.append(f"{i}) {_redif_prefix(rec.redif)}{rec.full_name or 'نامشخص'}{hidden_note}")
+        sheet_note = f"  —  📚 {sheet_labels.get(rec.sheet_key, rec.sheet_key)}" if sheet_labels is not None else ""
+        lines.append(f"{i}) {_redif_prefix(rec.redif)}{rec.full_name or 'نامشخص'}{hidden_note}{sheet_note}")
         info_parts = []
         if rec.grade:
             info_parts.append(f"مقطع: {rec.grade}")
@@ -106,7 +120,7 @@ def _short_name(name, limit=28):
     return name if len(name) <= limit else name[: limit - 1] + "…"
 
 
-def page_keyboard(sheet_key, page_records, page, total_count, page_size, in_search):
+def page_keyboard(page_records, page, total_count, page_size, in_search, mode="sheet"):
     rows = []
     total_pages = max(1, math.ceil(total_count / page_size))
 
@@ -157,12 +171,12 @@ def page_keyboard(sheet_key, page_records, page, total_count, page_size, in_sear
             [
                 InlineKeyboardButton(
                     f"پاسخگویی {STATUS_ICON[rec.phone_status]}",
-                    callback_data=f"tg:{sheet_key}:{rec.row}:p",
+                    callback_data=f"tg:{rec.sheet_key}:{rec.row}:p",
                     style=style,
                 ),
                 InlineKeyboardButton(
                     f"حضور {STATUS_ICON[rec.attendance_status]}",
-                    callback_data=f"tg:{sheet_key}:{rec.row}:a",
+                    callback_data=f"tg:{rec.sheet_key}:{rec.row}:a",
                     style=style,
                 ),
             ]
@@ -179,10 +193,17 @@ def page_keyboard(sheet_key, page_records, page, total_count, page_size, in_sear
             ]
         )
 
-    bottom_row = [InlineKeyboardButton("🔎 جستجو", callback_data="search:start")]
-    if in_search:
-        bottom_row.append(InlineKeyboardButton("✖️ حذف فیلتر", callback_data="search:clear"))
-    rows.append(bottom_row)
+    if mode == "global":
+        bottom_row = [InlineKeyboardButton("🔎 جستجوی جدید", callback_data="search:global:start")]
+        if in_search:
+            bottom_row.append(InlineKeyboardButton("✖️ پایان جستجو", callback_data="search:global:clear"))
+        rows.append(bottom_row)
+    else:
+        bottom_row = [InlineKeyboardButton("🔎 جستجو", callback_data="search:start")]
+        if in_search:
+            bottom_row.append(InlineKeyboardButton("✖️ حذف فیلتر", callback_data="search:clear"))
+        rows.append(bottom_row)
+        rows.append([InlineKeyboardButton("🔎 جستجو در همه‌ی شیت‌ها", callback_data="search:global:start")])
     rows.append(
         [
             InlineKeyboardButton("📊 آمار کلی", callback_data="stats"),

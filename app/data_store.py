@@ -69,21 +69,32 @@ class DataStore:
         self.state_store.set_status(sheet_key, row, attendance_status=rec.attendance_status.name)
         return rec
 
+    @staticmethod
+    def _matches(rec, query, qdigits):
+        name = str(rec.full_name or "")
+        if query in name:
+            return True
+        if qdigits:
+            phones = (rec.home_phone, rec.student_phone, rec.mother_phone, rec.father_phone)
+            if any(phone is not None and qdigits in re.sub(r"\D", "", str(phone)) for phone in phones):
+                return True
+        return False
+
     def search(self, sheet_key, query):
         query = (query or "").strip()
         if not query:
             return self.get_records(sheet_key)
         qdigits = re.sub(r"\D", "", query)
+        return [rec for rec in self.get_records(sheet_key) if self._matches(rec, query, qdigits)]
+
+    def search_all(self, query):
+        query = (query or "").strip()
+        if not query:
+            return []
+        qdigits = re.sub(r"\D", "", query)
         results = []
-        for rec in self.get_records(sheet_key):
-            name = str(rec.full_name or "")
-            if query in name:
-                results.append(rec)
-                continue
-            if qdigits:
-                phones = (rec.home_phone, rec.student_phone, rec.mother_phone, rec.father_phone)
-                if any(phone is not None and qdigits in re.sub(r"\D", "", str(phone)) for phone in phones):
-                    results.append(rec)
+        for key in self.sheet_labels:
+            results.extend(rec for rec in self.get_records(key) if self._matches(rec, query, qdigits))
         return results
 
     def stats(self, sheet_key):

@@ -43,10 +43,21 @@ def _check_access(user_id: int) -> bool:
 def _render(context: ContextTypes.DEFAULT_TYPE):
     store = _store(context)
     view = context.user_data
-    sheet_key = view.get("sheet")
     page = view.get("page", 0)
     query = view.get("query")
 
+    if view.get("global"):
+        all_records = store.search_all(query)
+        total = len(all_records)
+        start = page * config.PAGE_SIZE
+        page_records = all_records[start : start + config.PAGE_SIZE]
+        text = page_text(
+            page_records, total, page, config.PAGE_SIZE, query, sheet_labels=dict(store.sheet_items())
+        )
+        keyboard = page_keyboard(page_records, page, total, config.PAGE_SIZE, True, mode="global")
+        return text, keyboard
+
+    sheet_key = view.get("sheet")
     all_records = store.search(sheet_key, query) if query else store.get_records(sheet_key)
     total = len(all_records)
     start = page * config.PAGE_SIZE
@@ -54,8 +65,8 @@ def _render(context: ContextTypes.DEFAULT_TYPE):
     sheet_stats = store.stats(sheet_key)
     sheet_name = store.sheet_label(sheet_key)
 
-    text = page_text(sheet_key, sheet_name, page_records, total, page, config.PAGE_SIZE, query, sheet_stats)
-    keyboard = page_keyboard(sheet_key, page_records, page, total, config.PAGE_SIZE, bool(query))
+    text = page_text(page_records, total, page, config.PAGE_SIZE, query, sheet_stats, sheet_name=sheet_name)
+    keyboard = page_keyboard(page_records, page, total, config.PAGE_SIZE, bool(query))
     return text, keyboard
 
 
@@ -122,7 +133,8 @@ async def cmd_stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text(NO_FILE_MESSAGE)
         return
     text = full_stats_text(store.stats_all(), store.sheet_items())
-    keyboard = stats_back_keyboard(bool(context.user_data.get("sheet")))
+    has_list = bool(context.user_data.get("sheet")) or bool(context.user_data.get("global"))
+    keyboard = stats_back_keyboard(has_list)
     await update.message.reply_text(text, reply_markup=keyboard)
 
 
@@ -262,13 +274,14 @@ async def on_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         store = _store(context)
         await query.answer()
         text = full_stats_text(store.stats_all(), store.sheet_items())
-        keyboard = stats_back_keyboard(bool(context.user_data.get("sheet")))
+        has_list = bool(context.user_data.get("sheet")) or bool(context.user_data.get("global"))
+        keyboard = stats_back_keyboard(has_list)
         await query.edit_message_text(text, reply_markup=keyboard)
         return
 
     if data == "stats:back":
         await query.answer()
-        if context.user_data.get("sheet"):
+        if context.user_data.get("sheet") or context.user_data.get("global"):
             text, keyboard = _render(context)
         else:
             store = _store(context)
@@ -281,6 +294,7 @@ async def on_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         context.user_data["sheet"] = sheet_key
         context.user_data["page"] = 0
         context.user_data["query"] = None
+        context.user_data["global"] = False
         await query.answer()
         text, keyboard = _render(context)
         await query.edit_message_text(text, reply_markup=keyboard)
@@ -289,9 +303,12 @@ async def on_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if data.startswith("nav:"):
         action = data.split(":")[1]
         store = _store(context)
-        sheet_key = context.user_data.get("sheet")
-        search_query = context.user_data.get("query")
-        all_records = store.search(sheet_key, search_query) if search_query else store.get_records(sheet_key)
+        if context.user_data.get("global"):
+            all_records = store.search_all(context.user_data.get("query"))
+        else:
+            sheet_key = context.user_data.get("sheet")
+            search_query = context.user_data.get("query")
+            all_records = store.search(sheet_key, search_query) if search_query else store.get_records(sheet_key)
         total_pages = max(1, -(-len(all_records) // config.PAGE_SIZE))
         page = context.user_data.get("page", 0)
         if action == "prev":
@@ -323,9 +340,21 @@ async def on_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     if data == "search:start":
         context.user_data["awaiting_search"] = True
+        context.user_data["search_scope"] = "sheet"
         await query.answer()
         await query.edit_message_text(
             "🔎 نام یا شماره تلفن موردنظر برای جستجو را ارسال کنید:",
+            reply_markup=search_prompt_keyboard(),
+        )
+        return
+
+    if data == "search:global:start":
+        context.user_data["awaiting_search"] = True
+        context.user_data["search_scope"] = "global"
+        context.user_data["global"] = True
+        await query.answer()
+        await query.edit_message_text(
+            "🔎 نام یا شماره تلفن موردنظر را برای جستجو در همه‌ی شیت‌ها ارسال کنید:",
             reply_markup=search_prompt_keyboard(),
         )
         return
@@ -343,6 +372,15 @@ async def on_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await query.answer()
         text, keyboard = _render(context)
         await query.edit_message_text(text, reply_markup=keyboard)
+        return
+
+    if data == "search:global:clear":
+        store = _store(context)
+        context.user_data.clear()
+        await query.answer()
+        await query.edit_message_text(
+            "رشته موردنظر را انتخاب کنید:", reply_markup=root_menu_keyboard(store.sheet_items())
+        )
         return
 
     if data == "export":
@@ -364,6 +402,15 @@ async def on_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
     store = _store(context)
     if store is None:
         await update.message.reply_text(NO_FILE_MESSAGE)
+        return
+
+    if context.user_data.get("search_scope") == "global":
+        context.user_data["awaiting_search"] = False
+        context.user_data["global"] = True
+        context.user_data["query"] = update.message.text.strip()
+        context.user_data["page"] = 0
+        text, keyboard = _render(context)
+        await update.message.reply_text(text, reply_markup=keyboard)
         return
 
     if not context.user_data.get("sheet"):
