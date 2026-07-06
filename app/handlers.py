@@ -1,17 +1,30 @@
 import logging
 import os
+import time
 
 from telegram import Update
 from telegram.ext import ContextTypes
 
-from app import config
-from app.keyboards import page_keyboard, page_text, root_menu_keyboard, search_prompt_keyboard
+from app import config, excel_data
+from app.data_store import DataStore
+from app.keyboards import (
+    confirm_replace_keyboard,
+    page_keyboard,
+    page_text,
+    root_menu_keyboard,
+    search_prompt_keyboard,
+)
 
 logger = logging.getLogger(__name__)
 
+NO_FILE_MESSAGE = (
+    "⚠️ هنوز هیچ فایل اکسلی ثبت نشده است.\n"
+    "فایل اکسل موردنظر (فرمت xlsx) را همین‌جا برای ربات ارسال کنید تا ثبت شود."
+)
+
 
 def _store(context: ContextTypes.DEFAULT_TYPE):
-    return context.bot_data["store"]
+    return context.bot_data.get("store")
 
 
 async def _deny(update: Update):
@@ -47,6 +60,9 @@ async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await _deny(update)
         return
     context.user_data.clear()
+    if _store(context) is None:
+        await update.message.reply_text(NO_FILE_MESSAGE)
+        return
     await update.message.reply_text(
         "به ربات مدیریت پیگیری دانش‌آموزان خوش آمدید.\nرشته موردنظر را انتخاب کنید:",
         reply_markup=root_menu_keyboard(),
@@ -57,6 +73,9 @@ async def cmd_export(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not _check_access(update.effective_user.id):
         await _deny(update)
         return
+    if _store(context) is None:
+        await update.message.reply_text(NO_FILE_MESSAGE)
+        return
     await _send_export(update.effective_chat.id, context)
 
 
@@ -64,7 +83,17 @@ async def cmd_reload(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not _check_access(update.effective_user.id):
         await _deny(update)
         return
-    _store(context).reload()
+    store = _store(context)
+    if store is None:
+        if os.path.exists(config.EXCEL_PATH):
+            context.bot_data["store"] = DataStore(
+                config.EXCEL_PATH, context.bot_data["state_store"], config.TMP_DIR
+            )
+            await update.message.reply_text("✅ فایل اکسل بارگذاری شد.")
+        else:
+            await update.message.reply_text(NO_FILE_MESSAGE)
+        return
+    store.reload()
     await update.message.reply_text("✅ فایل اکسل مجدداً بارگذاری شد.")
 
 
@@ -73,7 +102,9 @@ async def cmd_reset_status(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await _deny(update)
         return
     context.bot_data["state_store"].clear()
-    _store(context).reload()
+    store = _store(context)
+    if store is not None:
+        store.reload()
     await update.message.reply_text("✅ همه وضعیت‌های ثبت‌شده پاک شد.")
 
 
@@ -95,6 +126,62 @@ async def _send_export(chat_id, context: ContextTypes.DEFAULT_TYPE):
             pass
 
 
+def _discard_pending_upload(context: ContextTypes.DEFAULT_TYPE):
+    pending = context.user_data.pop("pending_excel_path", None)
+    if pending and os.path.exists(pending):
+        try:
+            os.remove(pending)
+        except OSError:
+            pass
+
+
+async def on_document(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not _check_access(update.effective_user.id):
+        await _deny(update)
+        return
+
+    document = update.message.document
+    if document is None:
+        return
+
+    filename = document.file_name or ""
+    is_xlsx = filename.lower().endswith(".xlsx") or document.mime_type == (
+        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+    )
+    if not is_xlsx:
+        await update.message.reply_text("فقط فایل اکسل با فرمت xlsx پذیرفته می‌شود.")
+        return
+
+    os.makedirs(config.TMP_DIR, exist_ok=True)
+    tmp_path = os.path.join(
+        config.TMP_DIR, f"upload_{update.effective_user.id}_{int(time.time())}.xlsx"
+    )
+    tg_file = await context.bot.get_file(document.file_id)
+    await tg_file.download_to_drive(tmp_path)
+
+    try:
+        records = excel_data.load_workbook_records(tmp_path)
+    except Exception:
+        os.remove(tmp_path)
+        await update.message.reply_text("❌ این فایل اکسل قابل خواندن نیست یا فرمت آن معتبر نیست.")
+        return
+
+    _discard_pending_upload(context)
+    context.user_data["pending_excel_path"] = tmp_path
+
+    counts = {excel_data.SHEET_LABELS[key]: len(recs) for key, recs in records.items()}
+    total = sum(counts.values())
+    lines = ["📥 فایل اکسل دریافت شد.", "تعداد ردیف‌های شناسایی‌شده:"]
+    for label, count in counts.items():
+        lines.append(f"- {label}: {count}")
+    lines.append(f"جمع کل: {total}")
+    lines.append("")
+    lines.append(
+        "⚠️ با تأیید، این فایل جایگزین فایل فعلی می‌شود و همه‌ی وضعیت‌های ثبت‌شده تا این لحظه پاک خواهد شد. ادامه می‌دهید؟"
+    )
+    await update.message.reply_text("\n".join(lines), reply_markup=confirm_replace_keyboard())
+
+
 async def on_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     if not _check_access(update.effective_user.id):
@@ -107,12 +194,39 @@ async def on_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await query.answer()
         return
 
+    if data == "loadxlsx:confirm":
+        pending = context.user_data.pop("pending_excel_path", None)
+        if not pending or not os.path.exists(pending):
+            await query.answer()
+            await query.edit_message_text("⚠️ فایل موردنظر دیگر در دسترس نیست. دوباره ارسال کنید.")
+            return
+        os.makedirs(os.path.dirname(config.EXCEL_PATH) or ".", exist_ok=True)
+        os.replace(pending, config.EXCEL_PATH)
+        state_store = context.bot_data["state_store"]
+        state_store.clear()
+        context.bot_data["store"] = DataStore(config.EXCEL_PATH, state_store, config.TMP_DIR)
+        await query.answer("فایل جایگزین شد.")
+        await query.edit_message_text(
+            "✅ فایل اکسل با موفقیت ثبت شد. برای شروع /start را بزنید."
+        )
+        return
+
+    if data == "loadxlsx:cancel":
+        _discard_pending_upload(context)
+        await query.answer()
+        await query.edit_message_text("❌ لغو شد.")
+        return
+
     if data == "menu:root":
         context.user_data.clear()
         await query.answer()
         await query.edit_message_text(
             "رشته موردنظر را انتخاب کنید:", reply_markup=root_menu_keyboard()
         )
+        return
+
+    if _store(context) is None:
+        await query.answer(NO_FILE_MESSAGE, show_alert=True)
         return
 
     if data.startswith("menu:"):
@@ -198,6 +312,10 @@ async def on_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     if not context.user_data.get("awaiting_search"):
+        return
+
+    if _store(context) is None:
+        await update.message.reply_text(NO_FILE_MESSAGE)
         return
 
     if not context.user_data.get("sheet"):

@@ -118,3 +118,14 @@ def page_keyboard(sheet_key, page_records, page, total_count, page_size, in_sear
 
 def search_prompt_keyboard():
     return InlineKeyboardMarkup([[InlineKeyboardButton("✖️ انصراف", callback_data="search:cancel")]])
+
+
+def confirm_replace_keyboard():
+    return InlineKeyboardMarkup(
+        [
+            [
+                InlineKeyboardButton("✅ بله، جایگزین کن", callback_data="loadxlsx:confirm"),
+                InlineKeyboardButton("❌ انصراف", callback_data="loadxlsx:cancel"),
+            ]
+        ]
+    )
