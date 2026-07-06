@@ -4,9 +4,11 @@ from enum import Enum
 
 import openpyxl
 
-SHEET_KEYS = {"انسانی": "h", "تجربی": "e", "ریاضی": "m"}
-SHEET_LABELS = {v: k for k, v in SHEET_KEYS.items()}
-SHEET_EMOJI = {"h": "📗", "e": "📘", "m": "📙"}
+SHEET_EMOJIS = ["📗", "📘", "📙", "📕", "📔", "📒", "📓", "📖"]
+
+
+def sheet_emoji(index: int) -> str:
+    return SHEET_EMOJIS[index % len(SHEET_EMOJIS)]
 
 
 class Status(Enum):
@@ -149,13 +151,22 @@ class Record:
 
 
 def load_workbook_records(path):
+    """Reads every worksheet that looks like a student list (has a
+    recognizable name/ردیف column), whatever its name happens to be.
+    Returns (records_by_sheet, sheet_labels) where sheet_labels maps the
+    generated short key (s0, s1, ...) to the sheet's actual name, in the
+    order the sheets appear in the workbook.
+    """
     wb = openpyxl.load_workbook(path, data_only=True)
     records_by_sheet = {}
-    for sheet_name, key in SHEET_KEYS.items():
-        if sheet_name not in wb.sheetnames:
-            continue
+    sheet_labels = {}
+    for sheet_name in wb.sheetnames:
         ws = wb[sheet_name]
         col_map = _build_col_map(ws)
+        if "full_name" not in col_map and "redif" not in col_map:
+            continue
+
+        key = f"s{len(sheet_labels)}"
         records = {}
         for r in range(2, ws.max_row + 1):
             def val(field_key):
@@ -192,19 +203,21 @@ def load_workbook_records(path):
                 attendance_status=parse_attend_status(val("attendance_status")),
             )
         records_by_sheet[key] = records
-    return records_by_sheet
+        sheet_labels[key] = sheet_name
+    return records_by_sheet, sheet_labels
 
 
-def export_workbook(source_path, records_by_sheet, out_path):
+def export_workbook(source_path, records_by_sheet, sheet_labels, out_path):
     wb = openpyxl.load_workbook(source_path)
-    for sheet_name, key in SHEET_KEYS.items():
-        if sheet_name not in wb.sheetnames or key not in records_by_sheet:
+    for key, records in records_by_sheet.items():
+        sheet_name = sheet_labels.get(key)
+        if not sheet_name or sheet_name not in wb.sheetnames:
             continue
         ws = wb[sheet_name]
         col_map = _build_col_map(ws)
         phone_col = col_map.get("phone_status")
         attend_col = col_map.get("attendance_status")
-        for rec in records_by_sheet[key].values():
+        for rec in records.values():
             if phone_col:
                 ws.cell(rec.row, phone_col).value = PHONE_STATUS_TEXT[rec.phone_status] or None
             if attend_col:

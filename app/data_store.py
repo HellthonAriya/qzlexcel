@@ -22,10 +22,11 @@ class DataStore:
         self.tmp_dir = tmp_dir
         os.makedirs(tmp_dir, exist_ok=True)
         self.records_by_sheet = {}
+        self.sheet_labels = {}
         self.reload()
 
     def reload(self):
-        records_by_sheet = excel_data.load_workbook_records(self.excel_path)
+        records_by_sheet, sheet_labels = excel_data.load_workbook_records(self.excel_path)
         overrides = self.state_store.load_all()
         for key, records in records_by_sheet.items():
             for row, rec in records.items():
@@ -38,6 +39,13 @@ class DataStore:
                 if attendance_status:
                     rec.attendance_status = Status[attendance_status]
         self.records_by_sheet = records_by_sheet
+        self.sheet_labels = sheet_labels
+
+    def sheet_items(self):
+        return list(self.sheet_labels.items())
+
+    def sheet_label(self, sheet_key):
+        return self.sheet_labels.get(sheet_key, sheet_key)
 
     def get_records(self, sheet_key):
         return list(self.records_by_sheet.get(sheet_key, {}).values())
@@ -86,4 +94,6 @@ class DataStore:
 
     def export(self):
         out_path = os.path.join(self.tmp_dir, f"export_{int(time.time())}.xlsx")
-        return excel_data.export_workbook(self.excel_path, self.records_by_sheet, out_path)
+        return excel_data.export_workbook(
+            self.excel_path, self.records_by_sheet, self.sheet_labels, out_path
+        )

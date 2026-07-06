@@ -52,8 +52,9 @@ def _render(context: ContextTypes.DEFAULT_TYPE):
     start = page * config.PAGE_SIZE
     page_records = all_records[start : start + config.PAGE_SIZE]
     sheet_stats = store.stats(sheet_key)
+    sheet_name = store.sheet_label(sheet_key)
 
-    text = page_text(sheet_key, page_records, total, page, config.PAGE_SIZE, query, sheet_stats)
+    text = page_text(sheet_key, sheet_name, page_records, total, page, config.PAGE_SIZE, query, sheet_stats)
     keyboard = page_keyboard(sheet_key, page_records, page, total, config.PAGE_SIZE, bool(query))
     return text, keyboard
 
@@ -63,12 +64,13 @@ async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await _deny(update)
         return
     context.user_data.clear()
-    if _store(context) is None:
+    store = _store(context)
+    if store is None:
         await update.message.reply_text(NO_FILE_MESSAGE)
         return
     await update.message.reply_text(
         "به ربات مدیریت پیگیری دانش‌آموزان خوش آمدید.\nرشته موردنظر را انتخاب کنید:",
-        reply_markup=root_menu_keyboard(),
+        reply_markup=root_menu_keyboard(store.sheet_items()),
     )
 
 
@@ -119,7 +121,7 @@ async def cmd_stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if store is None:
         await update.message.reply_text(NO_FILE_MESSAGE)
         return
-    text = full_stats_text(store.stats_all())
+    text = full_stats_text(store.stats_all(), store.sheet_items())
     keyboard = stats_back_keyboard(bool(context.user_data.get("sheet")))
     await update.message.reply_text(text, reply_markup=keyboard)
 
@@ -176,20 +178,27 @@ async def on_document(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await tg_file.download_to_drive(tmp_path)
 
     try:
-        records = excel_data.load_workbook_records(tmp_path)
+        records, sheet_labels = excel_data.load_workbook_records(tmp_path)
     except Exception:
         os.remove(tmp_path)
         await update.message.reply_text("❌ این فایل اکسل قابل خواندن نیست یا فرمت آن معتبر نیست.")
         return
 
+    if not sheet_labels:
+        os.remove(tmp_path)
+        await update.message.reply_text(
+            "❌ هیچ شیتی با ستون نام یا ردیف در این فایل پیدا نشد؛ فرمت فایل را بررسی کنید."
+        )
+        return
+
     _discard_pending_upload(context)
     context.user_data["pending_excel_path"] = tmp_path
 
-    counts = {excel_data.SHEET_LABELS[key]: len(recs) for key, recs in records.items()}
+    counts = {sheet_labels[key]: len(records[key]) for key in sheet_labels}
     total = sum(counts.values())
-    lines = ["📥 فایل اکسل دریافت شد.", "تعداد ردیف‌های شناسایی‌شده:"]
+    lines = ["📥 فایل اکسل دریافت شد.", "شیت‌های شناسایی‌شده:"]
     for label, count in counts.items():
-        lines.append(f"- {label}: {count}")
+        lines.append(f"- {label}: {count} ردیف")
     lines.append(f"جمع کل: {total}")
     lines.append("")
     lines.append(
@@ -235,10 +244,14 @@ async def on_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     if data == "menu:root":
         context.user_data.clear()
+        store = _store(context)
         await query.answer()
-        await query.edit_message_text(
-            "رشته موردنظر را انتخاب کنید:", reply_markup=root_menu_keyboard()
-        )
+        if store is None:
+            await query.edit_message_text(NO_FILE_MESSAGE)
+        else:
+            await query.edit_message_text(
+                "رشته موردنظر را انتخاب کنید:", reply_markup=root_menu_keyboard(store.sheet_items())
+            )
         return
 
     if _store(context) is None:
@@ -246,8 +259,9 @@ async def on_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     if data == "stats":
+        store = _store(context)
         await query.answer()
-        text = full_stats_text(_store(context).stats_all())
+        text = full_stats_text(store.stats_all(), store.sheet_items())
         keyboard = stats_back_keyboard(bool(context.user_data.get("sheet")))
         await query.edit_message_text(text, reply_markup=keyboard)
         return
@@ -257,7 +271,8 @@ async def on_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if context.user_data.get("sheet"):
             text, keyboard = _render(context)
         else:
-            text, keyboard = "رشته موردنظر را انتخاب کنید:", root_menu_keyboard()
+            store = _store(context)
+            text, keyboard = "رشته موردنظر را انتخاب کنید:", root_menu_keyboard(store.sheet_items())
         await query.edit_message_text(text, reply_markup=keyboard)
         return
 
@@ -346,13 +361,14 @@ async def on_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not context.user_data.get("awaiting_search"):
         return
 
-    if _store(context) is None:
+    store = _store(context)
+    if store is None:
         await update.message.reply_text(NO_FILE_MESSAGE)
         return
 
     if not context.user_data.get("sheet"):
         await update.message.reply_text(
-            "ابتدا یک رشته را انتخاب کنید:", reply_markup=root_menu_keyboard()
+            "ابتدا یک رشته را انتخاب کنید:", reply_markup=root_menu_keyboard(store.sheet_items())
         )
         return
 

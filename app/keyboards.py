@@ -5,22 +5,19 @@ from telegram import CopyTextButton, InlineKeyboardButton, InlineKeyboardMarkup
 from app.excel_data import (
     ATTEND_STATUS_TEXT,
     PHONE_STATUS_TEXT,
-    SHEET_EMOJI,
-    SHEET_LABELS,
     STATUS_ICON,
     Status,
     format_phone,
+    sheet_emoji,
 )
 
 
-def root_menu_keyboard():
-    rows = [
-        [InlineKeyboardButton("📗 انسانی", callback_data="menu:h")],
-        [InlineKeyboardButton("📘 تجربی", callback_data="menu:e")],
-        [InlineKeyboardButton("📙 ریاضی", callback_data="menu:m")],
-        [InlineKeyboardButton("📊 آمار کلی", callback_data="stats")],
-        [InlineKeyboardButton("📤 خروجی کامل اکسل", callback_data="export")],
-    ]
+def root_menu_keyboard(sheet_items):
+    rows = []
+    for idx, (key, name) in enumerate(sheet_items):
+        rows.append([InlineKeyboardButton(f"{sheet_emoji(idx)} {name}", callback_data=f"menu:{key}")])
+    rows.append([InlineKeyboardButton("📊 آمار کلی", callback_data="stats")])
+    rows.append([InlineKeyboardButton("📤 خروجی کامل اکسل", callback_data="export")])
     return InlineKeyboardMarkup(rows)
 
 
@@ -38,17 +35,17 @@ def _stats_line(stats):
     )
 
 
-def full_stats_text(stats_by_sheet):
+def full_stats_text(stats_by_sheet, sheet_items):
     lines = ["📊 آمار کلی", "━━━━━━━━━━━━━━"]
     grand_phone = {s: 0 for s in Status}
     grand_attendance = {s: 0 for s in Status}
     grand_total = 0
 
-    for key in SHEET_LABELS:
+    for idx, (key, name) in enumerate(sheet_items):
         stats = stats_by_sheet.get(key)
         if not stats:
             continue
-        lines.append(f"{SHEET_EMOJI.get(key, '')} {SHEET_LABELS[key]} ({stats['total']} نفر)")
+        lines.append(f"{sheet_emoji(idx)} {name} ({stats['total']} نفر)")
         lines.append(_stats_line(stats))
         lines.append("")
         for s in Status:
@@ -62,8 +59,8 @@ def full_stats_text(stats_by_sheet):
     return "\n".join(lines)
 
 
-def page_text(sheet_key, page_records, total_count, page, page_size, query=None, sheet_stats=None):
-    lines = [f"📚 رشته: {SHEET_LABELS[sheet_key]}"]
+def page_text(sheet_key, sheet_name, page_records, total_count, page, page_size, query=None, sheet_stats=None):
+    lines = [f"📚 رشته: {sheet_name}"]
     if query:
         lines.append(f"🔎 جستجو: «{query}»")
     if sheet_stats:
