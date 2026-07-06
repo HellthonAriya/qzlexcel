@@ -1,5 +1,6 @@
 import logging
 import os
+import re
 import time
 
 from telegram import Update
@@ -10,6 +11,7 @@ from app.data_store import DataStore
 from app.keyboards import (
     confirm_replace_keyboard,
     full_stats_text,
+    opcol_prompt_keyboard,
     page_keyboard,
     page_text,
     root_menu_keyboard,
@@ -45,6 +47,18 @@ def _ensure_operator_loaded(context: ContextTypes.DEFAULT_TYPE, user_id: int):
     if "selected_operator" not in context.user_data:
         state_store = context.bot_data.get("state_store")
         context.user_data["selected_operator"] = state_store.get_selected_operator(user_id) if state_store else None
+
+
+def _settings_view(store, context: ContextTypes.DEFAULT_TYPE):
+    operators = store.list_operators()
+    context.user_data["operator_choices"] = operators
+    selected = context.user_data.get("selected_operator")
+    override = store.get_operator_column_override()
+    text = "⚙️ تنظیمات\nنام ادمین (اپراتور) خودتان را انتخاب کنید تا موارد مربوط به شما در لیست‌ها با رنگ آبی مشخص شود:"
+    if selected:
+        text = f"⚙️ تنظیمات\nادمین انتخاب‌شده: «{selected}»\n\n" + text
+    keyboard = settings_keyboard(operators, selected, override)
+    return text, keyboard
 
 
 def _render(context: ContextTypes.DEFAULT_TYPE):
@@ -108,13 +122,8 @@ async def cmd_settings(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if store is None:
         await update.message.reply_text(NO_FILE_MESSAGE)
         return
-    operators = store.list_operators()
-    context.user_data["operator_choices"] = operators
-    selected = context.user_data.get("selected_operator")
-    text = "⚙️ تنظیمات\nنام ادمین (اپراتور) خودتان را انتخاب کنید تا موارد مربوط به شما در لیست‌ها با رنگ آبی مشخص شود:"
-    if selected:
-        text = f"⚙️ تنظیمات\nادمین انتخاب‌شده: «{selected}»\n\n" + text
-    await update.message.reply_text(text, reply_markup=settings_keyboard(operators, selected))
+    text, keyboard = _settings_view(store, context)
+    await update.message.reply_text(text, reply_markup=keyboard)
 
 
 async def cmd_export(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -305,14 +314,9 @@ async def on_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     if data == "settings:open":
         store = _store(context)
-        operators = store.list_operators()
-        context.user_data["operator_choices"] = operators
-        selected = context.user_data.get("selected_operator")
-        text = "⚙️ تنظیمات\nنام ادمین (اپراتور) خودتان را انتخاب کنید تا موارد مربوط به شما در لیست‌ها با رنگ آبی مشخص شود:"
-        if selected:
-            text = f"⚙️ تنظیمات\nادمین انتخاب‌شده: «{selected}»\n\n" + text
         await query.answer()
-        await query.edit_message_text(text, reply_markup=settings_keyboard(operators, selected))
+        text, keyboard = _settings_view(store, context)
+        await query.edit_message_text(text, reply_markup=keyboard)
         return
 
     if data.startswith("settings:op:"):
@@ -325,17 +329,33 @@ async def on_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         context.user_data["selected_operator"] = operator
         context.bot_data["state_store"].set_selected_operator(update.effective_user.id, operator)
         await query.answer(f"ادمین «{operator}» انتخاب شد.")
-        text = f"⚙️ تنظیمات\nادمین انتخاب‌شده: «{operator}»\nموارد مربوط به شما در لیست‌ها با رنگ آبی مشخص می‌شوند."
-        await query.edit_message_text(text, reply_markup=settings_keyboard(choices, operator))
+        text, keyboard = _settings_view(_store(context), context)
+        await query.edit_message_text(text, reply_markup=keyboard)
         return
 
     if data == "settings:clear":
         context.user_data["selected_operator"] = None
         context.bot_data["state_store"].set_selected_operator(update.effective_user.id, None)
-        choices = context.user_data.get("operator_choices") or []
         await query.answer("انتخاب پاک شد.")
-        text = "⚙️ تنظیمات\nنام ادمین (اپراتور) خودتان را انتخاب کنید تا موارد مربوط به شما در لیست‌ها با رنگ آبی مشخص شود:"
-        await query.edit_message_text(text, reply_markup=settings_keyboard(choices, None))
+        text, keyboard = _settings_view(_store(context), context)
+        await query.edit_message_text(text, reply_markup=keyboard)
+        return
+
+    if data == "settings:opcol:start":
+        context.user_data["awaiting_opcol"] = True
+        await query.answer()
+        await query.edit_message_text(
+            "🔧 حرف ستون ادمین را بفرستید (مثلاً A یا B).\n"
+            "برای بازگشت به تشخیص خودکار (بر اساس نام هدر «اپراتور»)، عبارت «خودکار» را بفرستید.",
+            reply_markup=opcol_prompt_keyboard(),
+        )
+        return
+
+    if data == "settings:opcol:cancel":
+        context.user_data["awaiting_opcol"] = False
+        await query.answer()
+        text, keyboard = _settings_view(_store(context), context)
+        await query.edit_message_text(text, reply_markup=keyboard)
         return
 
     if data == "stats":
@@ -464,6 +484,30 @@ async def on_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await _deny(update)
         return
     _ensure_operator_loaded(context, update.effective_user.id)
+
+    if context.user_data.get("awaiting_opcol"):
+        context.user_data["awaiting_opcol"] = False
+        store = _store(context)
+        if store is None:
+            await update.message.reply_text(NO_FILE_MESSAGE)
+            return
+        text_in = update.message.text.strip()
+        if text_in in ("خودکار", "auto", "0"):
+            store.set_operator_column_override(None)
+            await update.message.reply_text("↩️ به تشخیص خودکار ستون ادمین بازگشتیم و فایل مجدداً خوانده شد.")
+        elif re.fullmatch(r"[A-Za-z]{1,2}", text_in):
+            store.set_operator_column_override(text_in)
+            await update.message.reply_text(
+                f"✅ ستون {text_in.upper()} به‌عنوان ستون ادمین تنظیم شد و فایل مجدداً خوانده شد."
+            )
+        else:
+            await update.message.reply_text(
+                "❌ ورودی نامعتبر است. یک حرف ستون مثل A یا B بفرستید، یا «خودکار» برای بازگشت به تشخیص خودکار."
+            )
+            return
+        text, keyboard = _settings_view(store, context)
+        await update.message.reply_text(text, reply_markup=keyboard)
+        return
 
     if not context.user_data.get("awaiting_search"):
         return

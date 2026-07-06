@@ -30,6 +30,14 @@ class StateStore:
                 )
                 """
             )
+            conn.execute(
+                """
+                CREATE TABLE IF NOT EXISTS bot_config (
+                    key TEXT PRIMARY KEY,
+                    value TEXT
+                )
+                """
+            )
             conn.commit()
 
     def load_all(self):
@@ -74,4 +82,23 @@ class StateStore:
                 """,
                 (user_id, operator),
             )
+            conn.commit()
+
+    def get_config(self, key, default=None):
+        with closing(sqlite3.connect(self.path)) as conn:
+            row = conn.execute("SELECT value FROM bot_config WHERE key = ?", (key,)).fetchone()
+        return row[0] if row else default
+
+    def set_config(self, key, value):
+        with closing(sqlite3.connect(self.path)) as conn:
+            if value is None:
+                conn.execute("DELETE FROM bot_config WHERE key = ?", (key,))
+            else:
+                conn.execute(
+                    """
+                    INSERT INTO bot_config (key, value) VALUES (?, ?)
+                    ON CONFLICT(key) DO UPDATE SET value = excluded.value
+                    """,
+                    (key, value),
+                )
             conn.commit()

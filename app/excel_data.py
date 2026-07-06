@@ -102,7 +102,7 @@ _HEADER_RULES = [
 ]
 
 
-def _build_col_map(ws):
+def _build_col_map(ws, operator_col_letter=None):
     col_map = {}
     for cell in ws[1]:
         header = _normalize_header(cell.value)
@@ -114,6 +114,11 @@ def _build_col_map(ws):
             if predicate(header):
                 col_map[key] = cell.column
                 break
+    if operator_col_letter:
+        try:
+            col_map["operator"] = openpyxl.utils.column_index_from_string(operator_col_letter.upper())
+        except ValueError:
+            pass
     return col_map
 
 
@@ -152,19 +157,24 @@ class Record:
     attendance_status: Status
 
 
-def load_workbook_records(path):
+def load_workbook_records(path, operator_col_letter=None):
     """Reads every worksheet that looks like a student list (has a
     recognizable name/ردیف column), whatever its name happens to be.
     Returns (records_by_sheet, sheet_labels) where sheet_labels maps the
     generated short key (s0, s1, ...) to the sheet's actual name, in the
     order the sheets appear in the workbook.
+
+    operator_col_letter, if given (e.g. "A"), forces the اپراتور/admin
+    column to that letter on every sheet instead of relying on the
+    header text, for files where that column's header is missing or
+    doesn't say "اپراتور".
     """
     wb = openpyxl.load_workbook(path, data_only=True)
     records_by_sheet = {}
     sheet_labels = {}
     for sheet_name in wb.sheetnames:
         ws = wb[sheet_name]
-        col_map = _build_col_map(ws)
+        col_map = _build_col_map(ws, operator_col_letter)
         if "full_name" not in col_map and "redif" not in col_map:
             continue
 

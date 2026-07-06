@@ -26,7 +26,10 @@ class DataStore:
         self.reload()
 
     def reload(self):
-        records_by_sheet, sheet_labels = excel_data.load_workbook_records(self.excel_path)
+        operator_col = self.state_store.get_config("operator_column_override")
+        records_by_sheet, sheet_labels = excel_data.load_workbook_records(
+            self.excel_path, operator_col_letter=operator_col
+        )
         overrides = self.state_store.load_all()
         for key, records in records_by_sheet.items():
             for row, rec in records.items():
@@ -96,6 +99,13 @@ class DataStore:
         for key in self.sheet_labels:
             results.extend(rec for rec in self.get_records(key) if self._matches(rec, query, qdigits))
         return results
+
+    def get_operator_column_override(self):
+        return self.state_store.get_config("operator_column_override")
+
+    def set_operator_column_override(self, letter):
+        self.state_store.set_config("operator_column_override", letter.upper() if letter else None)
+        self.reload()
 
     def list_operators(self):
         seen = set()

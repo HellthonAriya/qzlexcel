@@ -23,15 +23,23 @@ def root_menu_keyboard(sheet_items):
     return InlineKeyboardMarkup(rows)
 
 
-def settings_keyboard(operators, selected):
+def settings_keyboard(operators, selected, operator_column_override=None):
     rows = []
     for idx, name in enumerate(operators):
         mark = "✅ " if name == selected else ""
         rows.append([InlineKeyboardButton(f"{mark}{name}", callback_data=f"settings:op:{idx}")])
     if selected:
         rows.append([InlineKeyboardButton("🚫 حذف انتخاب", callback_data="settings:clear")])
+    col_label = f"ستون {operator_column_override}" if operator_column_override else "تشخیص خودکار"
+    rows.append(
+        [InlineKeyboardButton(f"🔧 ستون ادمین: {col_label} (تغییر)", callback_data="settings:opcol:start")]
+    )
     rows.append([InlineKeyboardButton("🏠 انتخاب رشته", callback_data="menu:root")])
     return InlineKeyboardMarkup(rows)
+
+
+def opcol_prompt_keyboard():
+    return InlineKeyboardMarkup([[InlineKeyboardButton("✖️ انصراف", callback_data="settings:opcol:cancel")]])
 
 
 def _display_status(text_map, status):
