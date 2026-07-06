@@ -146,6 +146,7 @@ class Record:
     highlight_student: bool
     highlight_mother: bool
     highlight_father: bool
+    hidden: bool
     phone_status: Status
     attendance_status: Status
 
@@ -182,6 +183,9 @@ def load_workbook_records(path):
                 col = col_map.get(field_key)
                 return bool(col) and _is_yellow(ws.cell(r, col))
 
+            row_dim = ws.row_dimensions.get(r)
+            hidden = bool(row_dim.hidden) if row_dim is not None else False
+
             records[r] = Record(
                 sheet_key=key,
                 row=r,
@@ -199,6 +203,7 @@ def load_workbook_records(path):
                 highlight_student=yellow("student_phone"),
                 highlight_mother=yellow("mother_phone"),
                 highlight_father=yellow("father_phone"),
+                hidden=hidden,
                 phone_status=parse_phone_status(val("phone_status")),
                 attendance_status=parse_attend_status(val("attendance_status")),
             )

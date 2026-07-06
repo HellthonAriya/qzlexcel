@@ -84,7 +84,8 @@ def page_text(sheet_key, sheet_name, page_records, total_count, page, page_size,
 
     start_index = page * page_size
     for i, rec in enumerate(page_records, start=start_index + 1):
-        lines.append(f"{i}) {_redif_prefix(rec.redif)}{rec.full_name or 'نامشخص'}")
+        hidden_note = " 🔴 (مخفی)" if rec.hidden else ""
+        lines.append(f"{i}) {_redif_prefix(rec.redif)}{rec.full_name or 'نامشخص'}{hidden_note}")
         info_parts = []
         if rec.grade:
             info_parts.append(f"مقطع: {rec.grade}")
@@ -113,28 +114,31 @@ def page_keyboard(sheet_key, page_records, page, total_count, page_size, in_sear
         if idx > 0:
             rows.append([InlineKeyboardButton("➖➖➖➖➖➖➖➖➖➖➖➖➖➖➖", callback_data="noop")])
 
-        rows.append(
-            [
-                InlineKeyboardButton(
-                    f"👤 {_redif_prefix(rec.redif)}{_short_name(rec.full_name)}",
-                    callback_data="noop",
-                )
-            ]
-        )
+        style = "danger" if rec.hidden else None
+        name_label = f"👤 {_redif_prefix(rec.redif)}{_short_name(rec.full_name)}"
+        if rec.hidden:
+            name_label += " 🔴"
+        rows.append([InlineKeyboardButton(name_label, callback_data="noop", style=style)])
 
         phone_row = []
         student_phone = format_phone(rec.student_phone)
         if student_phone:
             label = ("🔵 " if rec.highlight_student else "☎️ ") + "خودش"
-            phone_row.append(InlineKeyboardButton(label, copy_text=CopyTextButton(text=student_phone)))
+            phone_row.append(
+                InlineKeyboardButton(label, copy_text=CopyTextButton(text=student_phone), style=style)
+            )
         mother_phone = format_phone(rec.mother_phone)
         if mother_phone:
             label = ("🔵 " if rec.highlight_mother else "👩 ") + "مادر"
-            phone_row.append(InlineKeyboardButton(label, copy_text=CopyTextButton(text=mother_phone)))
+            phone_row.append(
+                InlineKeyboardButton(label, copy_text=CopyTextButton(text=mother_phone), style=style)
+            )
         father_phone = format_phone(rec.father_phone)
         if father_phone:
             label = ("🔵 " if rec.highlight_father else "👨 ") + "پدر"
-            phone_row.append(InlineKeyboardButton(label, copy_text=CopyTextButton(text=father_phone)))
+            phone_row.append(
+                InlineKeyboardButton(label, copy_text=CopyTextButton(text=father_phone), style=style)
+            )
         if phone_row:
             rows.append(phone_row)
 
@@ -143,10 +147,12 @@ def page_keyboard(sheet_key, page_records, page, total_count, page_size, in_sear
                 InlineKeyboardButton(
                     f"پاسخگویی {STATUS_ICON[rec.phone_status]}",
                     callback_data=f"tg:{sheet_key}:{rec.row}:p",
+                    style=style,
                 ),
                 InlineKeyboardButton(
                     f"حضور {STATUS_ICON[rec.attendance_status]}",
                     callback_data=f"tg:{sheet_key}:{rec.row}:a",
+                    style=style,
                 ),
             ]
         )

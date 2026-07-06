@@ -12,7 +12,15 @@ def _check_ptb_version():
         sys.exit(
             "نسخه‌ی نصب‌شده‌ی python-telegram-bot قدیمی است و از دکمه‌ی کپی متن پشتیبانی نمی‌کند.\n"
             "این دستور را اجرا کنید و دوباره امتحان کنید:\n"
-            '  pip install --upgrade "python-telegram-bot>=21.3"'
+            '  pip install --upgrade "python-telegram-bot>=22.7"'
+        )
+    import inspect
+
+    if "style" not in inspect.signature(telegram.InlineKeyboardButton.__init__).parameters:
+        sys.exit(
+            "نسخه‌ی نصب‌شده‌ی python-telegram-bot از رنگی‌کردن دکمه‌ها (style) پشتیبانی نمی‌کند.\n"
+            "این دستور را اجرا کنید و دوباره امتحان کنید:\n"
+            '  pip install --upgrade "python-telegram-bot>=22.7"'
         )
 
 
