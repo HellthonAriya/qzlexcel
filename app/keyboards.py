@@ -116,18 +116,18 @@ def page_keyboard(sheet_key, page_records, page, total_count, page_size, in_sear
         )
 
         phone_row = []
-        if rec.student_phone:
-            phone = format_phone(rec.student_phone)
+        student_phone = format_phone(rec.student_phone)
+        if student_phone:
             label = ("🔵 " if rec.highlight_student else "☎️ ") + "خودش"
-            phone_row.append(InlineKeyboardButton(label, copy_text=CopyTextButton(text=phone)))
-        if rec.mother_phone:
-            phone = format_phone(rec.mother_phone)
+            phone_row.append(InlineKeyboardButton(label, copy_text=CopyTextButton(text=student_phone)))
+        mother_phone = format_phone(rec.mother_phone)
+        if mother_phone:
             label = ("🔵 " if rec.highlight_mother else "👩 ") + "مادر"
-            phone_row.append(InlineKeyboardButton(label, copy_text=CopyTextButton(text=phone)))
-        if rec.father_phone:
-            phone = format_phone(rec.father_phone)
+            phone_row.append(InlineKeyboardButton(label, copy_text=CopyTextButton(text=mother_phone)))
+        father_phone = format_phone(rec.father_phone)
+        if father_phone:
             label = ("🔵 " if rec.highlight_father else "👨 ") + "پدر"
-            phone_row.append(InlineKeyboardButton(label, copy_text=CopyTextButton(text=phone)))
+            phone_row.append(InlineKeyboardButton(label, copy_text=CopyTextButton(text=father_phone)))
         if phone_row:
             rows.append(phone_row)
 
